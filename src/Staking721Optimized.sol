@@ -106,78 +106,79 @@ abstract contract Staking721 is IStaking721 {
   }
 
   function _stake(uint256[] calldata _tokenIds) internal virtual {
-    uint64 len = uint64(_tokenIds.length);
-    require(len != 0, 'Staking 0 tokens');
+    address staker = _stakeMsgSender();
+    uint64 length = uint64(_tokenIds.length);
+    require(length != 0, 'Staking 0 tokens');
 
     address _stakingToken = stakingToken;
 
-    if (stakers[msg.sender].amountStaked > 0) {
-      _updateUnclaimedRewardsForStaker(msg.sender);
+    if (stakers[staker].amountStaked > 0) {
+      _updateUnclaimedRewardsForStaker(staker);
     } else {
-      stakersArray.push(msg.sender);
-      stakers[msg.sender].timeOfLastUpdate = uint128(block.timestamp);
-      stakers[msg.sender].conditionIdOflastUpdate = nextConditionId - 1;
+      stakersArray.push(staker);
+      stakers[staker].timeOfLastUpdate = uint128(block.timestamp);
+      stakers[staker].conditionIdOflastUpdate = nextConditionId - 1;
     }
-    for (uint256 i = 0; i < len; ++i) {
+    for (uint256 i = 0; i < length; ++i) {
       isStaking = 2;
-      IERC721(_stakingToken).safeTransferFrom(msg.sender, address(this), _tokenIds[i]);
+      IERC721(_stakingToken).safeTransferFrom(staker, address(this), _tokenIds[i]);
       isStaking = 1;
 
-      stakerAddress[_tokenIds[i]] = msg.sender;
+      stakerAddress[_tokenIds[i]] = staker;
 
       if (!isIndexed[_tokenIds[i]]) {
         isIndexed[_tokenIds[i]] = true;
         indexedTokens.push(_tokenIds[i]);
       }
     }
-    stakers[msg.sender].amountStaked += len;
+    stakers[staker].amountStaked += length;
 
-    emit TokensStaked(msg.sender, _tokenIds);
+    emit TokensStaked(staker, _tokenIds);
   }
 
   function _withdraw(uint256[] calldata _tokenIds) internal virtual {
-    uint256 _amountStaked = stakers[msg.sender].amountStaked;
+    address staker = _stakeMsgSender();
+    uint256 _amountStaked = stakers[staker].amountStaked;
     uint64 len = uint64(_tokenIds.length);
     require(len != 0, 'Withdrawing 0 tokens');
     require(_amountStaked >= len, 'Withdrawing more than staked');
 
     address _stakingToken = stakingToken;
 
-    _updateUnclaimedRewardsForStaker(msg.sender);
+    _updateUnclaimedRewardsForStaker(staker);
 
     if (_amountStaked == len) {
       address[] memory _stakersArray = stakersArray;
       for (uint256 i = 0; i < _stakersArray.length; ++i) {
-        if (_stakersArray[i] == msg.sender) {
+        if (_stakersArray[i] == staker) {
           stakersArray[i] = _stakersArray[_stakersArray.length - 1];
           stakersArray.pop();
           break;
         }
       }
     }
-    stakers[msg.sender].amountStaked -= len;
+    stakers[staker].amountStaked -= len;
 
     for (uint256 i = 0; i < len; ++i) {
-      require(stakerAddress[_tokenIds[i]] == msg.sender, 'Not staker');
+      require(stakerAddress[_tokenIds[i]] == staker, 'Not staker');
       stakerAddress[_tokenIds[i]] = address(0);
-      IERC721(_stakingToken).safeTransferFrom(address(this), msg.sender, _tokenIds[i]);
+      IERC721(_stakingToken).safeTransferFrom(address(this), staker, _tokenIds[i]);
     }
 
-    emit TokensWithdrawn(msg.sender, _tokenIds);
+    emit TokensWithdrawn(staker, _tokenIds);
   }
 
   function _claimRewards() internal virtual {
-    uint256 rewards = stakers[msg.sender].unclaimedRewards + _calculateRewards(msg.sender);
-
+    address staker = _stakeMsgSender();
+    uint256 rewards = stakers[staker].unclaimedRewards + _calculateRewards(msg.sender);
     require(rewards != 0, 'No rewards');
 
-    stakers[msg.sender].timeOfLastUpdate = uint128(block.timestamp);
-    stakers[msg.sender].unclaimedRewards = 0;
-    stakers[msg.sender].conditionIdOflastUpdate = nextConditionId - 1;
+    stakers[staker].timeOfLastUpdate = uint128(block.timestamp);
+    stakers[staker].unclaimedRewards = 0;
+    stakers[staker].conditionIdOflastUpdate = nextConditionId - 1;
 
-    _mintRewards(msg.sender, rewards);
-
-    emit RewardsClaimed(msg.sender, rewards);
+    _mintRewards(staker, rewards);
+    emit RewardsClaimed(staker, rewards);
   }
 
   function _availableRewards(address _user) internal view virtual returns (uint256 _rewards) {
@@ -228,6 +229,10 @@ abstract contract Staking721 is IStaking721 {
       uint256 rewardsProduct = timeStaked * staker.amountStaked * condition.rewardsPerUnitTime;
       _rewards += rewardsProduct / condition.timeUnit;
     }
+  }
+
+  function _stakeMsgSender() internal virtual returns (address) {
+    return msg.sender;
   }
 
   function getRewardTokenBalance() external view virtual returns (uint256 _rewardsAvailableInContract);

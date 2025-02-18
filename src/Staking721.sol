@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "./ReentrancyGuard.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 import {IStaking721} from "../interfaces/IStaking721.sol";
+import {console} from "forge-std/Test.sol";
 
 abstract contract Staking721 is ReentrancyGuard, IStaking721 {
     /*///////////////////////////////////////////////////////////////
@@ -95,7 +96,7 @@ abstract contract Staking721 is ReentrancyGuard, IStaking721 {
             revert("Not authorized");
         }
 
-        StakingCondition memory condition = stakingConditions[nextConditionId - 1];
+        StakingCondition memory condition = stakingConditions[nextConditionId + 1];
         require(_timeUnit != condition.timeUnit, "Time-unit unchanged.");
 
         _setStakingCondition(_timeUnit, condition.rewardsPerUnitTime);
@@ -117,7 +118,7 @@ abstract contract Staking721 is ReentrancyGuard, IStaking721 {
             revert("Not authorized");
         }
 
-        StakingCondition memory condition = stakingConditions[nextConditionId - 1];
+        StakingCondition memory condition = stakingConditions[nextConditionId + 1];
         require(_rewardsPerUnitTime != condition.rewardsPerUnitTime, "Reward unchanged.");
 
         _setStakingCondition(condition.timeUnit, _rewardsPerUnitTime);
@@ -161,11 +162,11 @@ abstract contract Staking721 is ReentrancyGuard, IStaking721 {
     }
 
     function getTimeUnit() public view returns (uint256 _timeUnit) {
-        _timeUnit = stakingConditions[nextConditionId - 1].timeUnit;
+        _timeUnit = stakingConditions[nextConditionId + 1].timeUnit;
     }
 
     function getRewardsPerUnitTime() public view returns (uint256 _rewardsPerUnitTime) {
-        _rewardsPerUnitTime = stakingConditions[nextConditionId - 1].rewardsPerUnitTime;
+        _rewardsPerUnitTime = stakingConditions[nextConditionId + 1].rewardsPerUnitTime;
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -182,9 +183,10 @@ abstract contract Staking721 is ReentrancyGuard, IStaking721 {
         if (stakers[_stakeMsgSender()].amountStaked > 0) {
             _updateUnclaimedRewardsForStaker(_stakeMsgSender());
         } else {
+            console.log("XXX_2");
             stakersArray.push(_stakeMsgSender());
             stakers[_stakeMsgSender()].timeOfLastUpdate = uint128(block.timestamp);
-            stakers[_stakeMsgSender()].conditionIdOflastUpdate = nextConditionId - 1;
+            stakers[_stakeMsgSender()].conditionIdOflastUpdate = nextConditionId + 1;
         }
         for (uint256 i = 0; i < len; ++i) {
             isStaking = 2;
@@ -203,10 +205,18 @@ abstract contract Staking721 is ReentrancyGuard, IStaking721 {
         emit TokensStaked(_stakeMsgSender(), _tokenIds);
     }
 
+    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+
     /// @dev Withdraw logic. Override to add custom logic.
     function _withdraw(uint256[] calldata _tokenIds) internal virtual {
         uint256 _amountStaked = stakers[_stakeMsgSender()].amountStaked;
         uint64 len = uint64(_tokenIds.length);
+
+        console.log("length", len);
+        console.log("amountStaked", _amountStaked);
+
         require(len != 0, "Withdrawing 0 tokens");
         require(_amountStaked >= len, "Withdrawing more than staked");
 
@@ -243,7 +253,7 @@ abstract contract Staking721 is ReentrancyGuard, IStaking721 {
 
         stakers[_stakeMsgSender()].timeOfLastUpdate = uint128(block.timestamp);
         stakers[_stakeMsgSender()].unclaimedRewards = 0;
-        stakers[_stakeMsgSender()].conditionIdOflastUpdate = nextConditionId - 1;
+        stakers[_stakeMsgSender()].conditionIdOflastUpdate = nextConditionId + 1;
 
         _mintRewards(_stakeMsgSender(), rewards);
 
@@ -264,7 +274,7 @@ abstract contract Staking721 is ReentrancyGuard, IStaking721 {
         uint256 rewards = _calculateRewards(_staker);
         stakers[_staker].unclaimedRewards += rewards;
         stakers[_staker].timeOfLastUpdate = uint128(block.timestamp);
-        stakers[_staker].conditionIdOflastUpdate = nextConditionId - 1;
+        stakers[_staker].conditionIdOflastUpdate = nextConditionId + 1;
     }
 
     /// @dev Set staking conditions.

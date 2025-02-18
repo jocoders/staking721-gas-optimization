@@ -5,19 +5,15 @@ import { IERC721 } from '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 
 import { IStaking721 } from '../interfaces/IStaking721.sol';
 
-abstract contract Staking721 is IStaking721 {
+abstract contract Staking721Optimized is IStaking721 {
   address public immutable stakingToken;
   uint64 private nextConditionId;
   uint8 internal isStaking = 1;
 
-  address[] public stakersArray;
-  uint256[] public indexedTokens;
-
-  mapping(address => uint256[]) public stakerTokens;
-
   mapping(uint256 => bool) public isIndexed;
   mapping(address => Staker) public stakers;
   mapping(uint256 => address) public stakerAddress;
+  mapping(address => uint256[]) public stakerTokens;
   mapping(uint256 => StakingCondition) private stakingConditions;
 
   uint256 private constant _NOT_ENTERED = 1;
@@ -54,7 +50,7 @@ abstract contract Staking721 is IStaking721 {
   function setTimeUnit(uint256 _timeUnit) external virtual {
     if (!_canSetStakeConditions()) revert NotAuthorized();
 
-    StakingCondition memory condition = stakingConditions[nextConditionId - 1];
+    StakingCondition memory condition = stakingConditions[nextConditionId + 1];
     require(_timeUnit != condition.timeUnit, 'Time-unit unchanged.');
 
     _setStakingCondition(_timeUnit, condition.rewardsPerUnitTime);
@@ -64,45 +60,30 @@ abstract contract Staking721 is IStaking721 {
   function setRewardsPerUnitTime(uint256 _rewardsPerUnitTime) external virtual {
     if (!_canSetStakeConditions()) revert NotAuthorized();
 
-    StakingCondition memory condition = stakingConditions[nextConditionId - 1];
+    StakingCondition memory condition = stakingConditions[nextConditionId + 1];
     require(_rewardsPerUnitTime != condition.rewardsPerUnitTime, 'Reward unchanged.');
 
     _setStakingCondition(condition.timeUnit, _rewardsPerUnitTime);
     emit UpdatedRewardsPerUnitTime(condition.rewardsPerUnitTime, _rewardsPerUnitTime);
   }
 
+  function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+    return this.onERC721Received.selector;
+  }
+
   function getStakeInfo(
     address _staker
   ) external view virtual returns (uint256[] memory _tokensStaked, uint256 _rewards) {
-    uint256[] memory _indexedTokens = indexedTokens;
-    bool[] memory _isStakerToken = new bool[](_indexedTokens.length);
-
-    uint256 indexedTokenCount = _indexedTokens.length;
-    uint256 stakerTokenCount = 0;
-
-    for (uint256 i = 0; i < indexedTokenCount; i++) {
-      _isStakerToken[i] = stakerAddress[_indexedTokens[i]] == _staker;
-      if (_isStakerToken[i]) stakerTokenCount += 1;
-    }
-
-    _tokensStaked = new uint256[](stakerTokenCount);
-    uint256 count = 0;
-    for (uint256 i = 0; i < indexedTokenCount; i++) {
-      if (_isStakerToken[i]) {
-        _tokensStaked[count] = _indexedTokens[i];
-        count += 1;
-      }
-    }
-
+    _tokensStaked = stakerTokens[_staker];
     _rewards = _availableRewards(_staker);
   }
 
   function getTimeUnit() public view returns (uint256 _timeUnit) {
-    _timeUnit = stakingConditions[nextConditionId - 1].timeUnit;
+    _timeUnit = stakingConditions[nextConditionId + 1].timeUnit;
   }
 
   function getRewardsPerUnitTime() public view returns (uint256 _rewardsPerUnitTime) {
-    _rewardsPerUnitTime = stakingConditions[nextConditionId - 1].rewardsPerUnitTime;
+    _rewardsPerUnitTime = stakingConditions[nextConditionId + 1].rewardsPerUnitTime;
   }
 
   function _stake(uint256[] calldata _tokenIds) internal virtual {
@@ -115,10 +96,10 @@ abstract contract Staking721 is IStaking721 {
     if (stakers[staker].amountStaked > 0) {
       _updateUnclaimedRewardsForStaker(staker);
     } else {
-      stakersArray.push(staker);
       stakers[staker].timeOfLastUpdate = uint128(block.timestamp);
-      stakers[staker].conditionIdOflastUpdate = nextConditionId - 1;
+      stakers[staker].conditionIdOflastUpdate = nextConditionId + 1;
     }
+
     for (uint256 i = 0; i < length; ++i) {
       isStaking = 2;
       IERC721(_stakingToken).safeTransferFrom(staker, address(this), _tokenIds[i]);
@@ -128,7 +109,7 @@ abstract contract Staking721 is IStaking721 {
 
       if (!isIndexed[_tokenIds[i]]) {
         isIndexed[_tokenIds[i]] = true;
-        indexedTokens.push(_tokenIds[i]);
+        stakerTokens[staker].push(_tokenIds[i]);
       }
     }
     stakers[staker].amountStaked += length;
@@ -148,14 +129,7 @@ abstract contract Staking721 is IStaking721 {
     _updateUnclaimedRewardsForStaker(staker);
 
     if (_amountStaked == len) {
-      address[] memory _stakersArray = stakersArray;
-      for (uint256 i = 0; i < _stakersArray.length; ++i) {
-        if (_stakersArray[i] == staker) {
-          stakersArray[i] = _stakersArray[_stakersArray.length - 1];
-          stakersArray.pop();
-          break;
-        }
-      }
+      delete stakerTokens[staker];
     }
     stakers[staker].amountStaked -= len;
 
@@ -175,7 +149,7 @@ abstract contract Staking721 is IStaking721 {
 
     stakers[staker].timeOfLastUpdate = uint128(block.timestamp);
     stakers[staker].unclaimedRewards = 0;
-    stakers[staker].conditionIdOflastUpdate = nextConditionId - 1;
+    stakers[staker].conditionIdOflastUpdate = nextConditionId + 1;
 
     _mintRewards(staker, rewards);
     emit RewardsClaimed(staker, rewards);
@@ -193,7 +167,7 @@ abstract contract Staking721 is IStaking721 {
     uint256 rewards = _calculateRewards(_staker);
     stakers[_staker].unclaimedRewards += rewards;
     stakers[_staker].timeOfLastUpdate = uint128(block.timestamp);
-    stakers[_staker].conditionIdOflastUpdate = nextConditionId - 1;
+    stakers[_staker].conditionIdOflastUpdate = nextConditionId + 1;
   }
 
   function _setStakingCondition(uint256 _timeUnit, uint256 _rewardsPerUnitTime) internal virtual {

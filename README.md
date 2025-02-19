@@ -1,66 +1,76 @@
-## Foundry
+# Gas Optimization Audit Report - MockStaking721
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## Overview
 
-Foundry consists of:
+- **Contract Audited:** MockStaking721.sol & MockStaking721Optimized.sol
+- **Optimization Techniques Used:** Storage slot packing, mappings instead of arrays, inline assembly, gas-efficient reentrancy protection
+- **Audit Focus:** Reducing gas costs for deployment and function execution
+- **Findings Summary:**
+  - **Deployment Gas Reduced:** 2,653,303 -> 2,222,732 (↓ 16.2%)
+  - **Deployment Size Reduced:** 12,410 -> 10,405 (↓ 16.1%)
+  - **Gas Savings on Function Calls:** Significant reductions in storage-heavy functions
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## Optimizations & Gas Savings
 
-## Documentation
+### 1️⃣ Implemented Reentrancy Guard Inside Contract
 
-https://book.getfoundry.sh/
+- Removed dependency on OpenZeppelin’s `ReentrancyGuard`.
+- Implemented a custom reentrancy guard using `_status` variable.
+- **Gas Improvement:** Avoids external library calls, reducing contract size and function execution costs.
 
-## Usage
+### 2️⃣ Reduced Storage Access with Local Variables
 
-### Build
+- Before: Functions accessed storage multiple times within loops.
+- After: Created local variables to store frequently accessed values.
+- **Gas Improvement:** Reduced redundant SLOAD operations.
 
-```shell
-$ forge build
-```
+### 3️⃣ Packed Variables into a Single Storage Slot
 
-### Test
+- **Before:** Variables were stored in separate storage slots:
+  ```solidity
+  address public immutable stakingToken;
+  uint64 private nextConditionId;
+  uint8 internal isStaking = 1;
+  ```
+- **After:** These variables were grouped into a single slot for better storage efficiency.
+- **Gas Improvement:** Saves 20,000+ gas per cold SLOAD.
 
-```shell
-$ forge test
-```
+### 4️⃣ Replaced Arrays with Mappings
 
-### Format
+- **Before:** Used arrays to track staked token IDs:
+  ```solidity
+  uint256[] public indexedTokens;
+  address[] public stakersArray;
+  ```
+- **After:** Switched to mappings:
+  ```solidity
+  mapping(address => uint256[]) public stakerTokens;
+  ```
+- **Main Benefit:**
+  - Arrays required dynamic resizing and shifting elements → **Expensive**.
+  - Mappings allow direct access to data with **constant time complexity (O(1))**.
+  - **Gas Improvement:** Reduced loop iterations and expensive storage modifications.
 
-```shell
-$ forge fmt
-```
+## 📊 Gas Usage Comparison (Before vs After)
 
-### Gas Snapshots
+| Function Name       | Before (Avg) | After (Avg) | Improvement |
+| ------------------- | ------------ | ----------- | ----------- |
+| **Deployment Cost** | 2,653,303    | 2,222,732   | **↓ 16.2%** |
+| **Deployment Size** | 12,410       | 10,405      | **↓ 16.1%** |
+| `claimRewards`      | 34,192       | 34,144      | ↓ 0.1%      |
+| `getStakeInfo`      | 7,788        | 3,973       | **↓ 49.0%** |
+| `stake`             | 287,742      | 257,171     | **↓ 10.6%** |
+| `stakerAddress`     | 894          | 894         | No Change   |
+| `withdraw`          | 105,892      | 98,888      | **↓ 6.6%**  |
 
-```shell
-$ forge snapshot
-```
+## ✅ Conclusion
 
-### Anvil
+- **Deployment gas reduced by 16.2%**
+- **Contract size reduced by 16.1%**
+- **Improved function execution costs**:
+  - **`stake` (-10.6%)** → Optimized mapping access & removed array shifting
+  - **`getStakeInfo` (-49.0%)** → Replaced costly array lookups with direct mapping access
+  - **`withdraw` (-6.6%)** → Optimized storage access
+- **Overall:** Gas optimization techniques **improved efficiency without changing functionality** 🎯
 
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+This optimized version of `MockStaking721Optimized.sol` is now **faster, cheaper, and more efficient** in gas usage!

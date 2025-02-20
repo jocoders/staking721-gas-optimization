@@ -27,13 +27,8 @@
 ### 3️⃣ Packed Variables into a Single Storage Slot
 
 - **Before:** Variables were stored in separate storage slots:
-  ```solidity
-  address public immutable stakingToken;
-  uint64 private nextConditionId;
-  uint8 internal isStaking = 1;
-  ```
 - **After:** These variables were grouped into a single slot for better storage efficiency.
-- **Gas Improvement:** Saves 20,000+ gas per cold SLOAD.
+- **Gas Improvement:** Saves gas for the storage.
 
 ### 4️⃣ Replaced Arrays with Mappings
 

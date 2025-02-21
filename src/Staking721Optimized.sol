@@ -26,9 +26,17 @@ abstract contract Staking721Optimized is IStaking721 {
     uint256 private _status = _NOT_ENTERED;
 
     error NotAuthorized();
+    error ReentrancyGuard();
+    error Staking0Tokens();
+    error Withdrawing0Tokens();
+    error WithdrawingMoreThanStaked();
+    error NotStaker();
+    error NoRewards();
+    error TimeUnit0();
+    error TimeUnitUnchanged();
 
     modifier nonReentrant() {
-        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+        if (_status == _ENTERED) revert ReentrancyGuard();
 
         _status = _ENTERED;
         _;
@@ -40,7 +48,7 @@ abstract contract Staking721Optimized is IStaking721 {
      * @param _stakingToken The address of the ERC-721 token that can be staked.
      */
     constructor(address _stakingToken) {
-        require(_stakingToken != address(0), "collection address 0");
+        if (_stakingToken == address(0)) revert Staking0Tokens();
         stakingToken = _stakingToken;
     }
 
@@ -75,7 +83,7 @@ abstract contract Staking721Optimized is IStaking721 {
         if (!_canSetStakeConditions()) revert NotAuthorized();
 
         StakingCondition memory condition = stakingConditions[nextConditionId + 1];
-        require(_timeUnit != condition.timeUnit, "Time-unit unchanged.");
+        if (_timeUnit != condition.timeUnit) revert TimeUnitUnchanged();
 
         _setStakingCondition(_timeUnit, condition.rewardsPerUnitTime);
         emit UpdatedTimeUnit(condition.timeUnit, _timeUnit);
@@ -138,7 +146,7 @@ abstract contract Staking721Optimized is IStaking721 {
     function _stake(uint256[] calldata _tokenIds) internal virtual {
         address staker = _stakeMsgSender();
         uint64 length = uint64(_tokenIds.length);
-        require(length != 0, "Staking 0 tokens");
+        if (length == 0) revert Staking0Tokens();
 
         address _stakingToken = stakingToken;
 
@@ -175,8 +183,8 @@ abstract contract Staking721Optimized is IStaking721 {
         address staker = _stakeMsgSender();
         uint256 _amountStaked = stakers[staker].amountStaked;
         uint64 len = uint64(_tokenIds.length);
-        require(len != 0, "Withdrawing 0 tokens");
-        require(_amountStaked >= len, "Withdrawing more than staked");
+        if (len == 0) revert Withdrawing0Tokens();
+        if (_amountStaked < len) revert WithdrawingMoreThanStaked();
 
         address _stakingToken = stakingToken;
 
@@ -188,7 +196,7 @@ abstract contract Staking721Optimized is IStaking721 {
         stakers[staker].amountStaked -= len;
 
         for (uint256 i = 0; i < len; ++i) {
-            require(stakerAddress[_tokenIds[i]] == staker, "Not staker");
+            if (stakerAddress[_tokenIds[i]] != staker) revert NotStaker();
             stakerAddress[_tokenIds[i]] = address(0);
             IERC721(_stakingToken).safeTransferFrom(address(this), staker, _tokenIds[i]);
         }
@@ -203,7 +211,7 @@ abstract contract Staking721Optimized is IStaking721 {
     function _claimRewards() internal virtual {
         address staker = _stakeMsgSender();
         uint256 rewards = stakers[staker].unclaimedRewards + _calculateRewards(msg.sender);
-        require(rewards != 0, "No rewards");
+        if (rewards == 0) revert NoRewards();
 
         stakers[staker].timeOfLastUpdate = uint128(block.timestamp);
         stakers[staker].unclaimedRewards = 0;
@@ -245,7 +253,7 @@ abstract contract Staking721Optimized is IStaking721 {
      * @param _rewardsPerUnitTime The rewards distributed per unit time.
      */
     function _setStakingCondition(uint256 _timeUnit, uint256 _rewardsPerUnitTime) internal virtual {
-        require(_timeUnit != 0, "time-unit can't be 0");
+        if (_timeUnit == 0) revert TimeUnit0();
         uint256 conditionId = nextConditionId;
         nextConditionId += 1;
 
